@@ -1,0 +1,95 @@
+###  ELK Alerting ###
+### Extraction Query Sample based on per Bucket model ######
+{
+    "size": 0,
+    "query": {
+        "bool": {
+            "filter": [
+                {
+                    "range": {
+                        "@timestamp": {
+                            "from": "{{period_end}}||-15m",
+                            "to": "{{period_end}}",
+                            "include_lower": true,
+                            "include_upper": true,
+                            "format": "epoch_millis",
+                            "boost": 1
+                        }
+                    }
+                },
+                {
+                    "query_string": {
+                        "query": "*completeDocusignContract*",
+                        "default_field": "concise.ServiceOperationName.keyword",
+                        "fields": [],
+                        "type": "best_fields",
+                        "default_operator": "or",
+                        "max_determinized_states": 10000,
+                        "enable_position_increments": true,
+                        "fuzziness": "AUTO",
+                        "fuzzy_prefix_length": 0,
+                        "fuzzy_max_expansions": 50,
+                        "phrase_slop": 0,
+                        "escape": false,
+                        "auto_generate_synonyms_phrase_query": true,
+                        "fuzzy_transpositions": true,
+                        "boost": 1
+                    }
+                }
+            ],
+            "adjust_pure_negative": true,
+            "boost": 1
+        }
+    },
+    "aggregations": {
+        "composite_agg": {
+            "composite": {
+                "size": 10,
+                "sources": [
+                    {
+                        "Site": {
+                            "terms": {
+                                "field": "concise.CFSite.keyword",
+                                "missing_bucket": false,
+                                "order": "asc"
+                            }
+                        }
+                    },
+                    {
+                        "parameter_codes": {
+                            "terms": {
+                                "script": {
+                                    "source": "def arr=[];for (item in doc['concise.CFSite.keyword']) {if(item !='XXXX' && item != 'XXXX'){arr.add(item);}}return arr",
+                                    "lang": "painless"
+                                },
+                                "missing_bucket": false,
+                                "order": "asc"
+                            }
+                        }
+                    }
+                ]
+            },
+            "aggregations": {
+                "when": {
+                    "avg": {
+                        "field": "concise.Duration"
+                    }
+                }
+            }
+        }
+    }
+}
+
+##### Trigger condition based on the Query ###
+{
+    "buckets_path": {
+        "total_count": "_count",
+        "response_time": "when.value"
+    },
+    "parent_bucket_path": "composite_agg",
+    "script": {
+        "source": "params.response_time > 8000",
+        "lang": "painless"
+    },
+    "gap_policy": "skip"
+}
